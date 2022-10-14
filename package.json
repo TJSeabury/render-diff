@@ -9,7 +9,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "get-pixels": "^3.3.3",
+    "ndarray": "^1.0.19",
     "node-cron": "^3.0.2",
+    "pngjs": "^6.0.0",
     "puppeteer": "^18.2.1"
   }
 }
