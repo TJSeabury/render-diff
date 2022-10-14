@@ -25,18 +25,19 @@ const capture = async ( page, domain, sizes ) => {
     await page.reload( { waitUntil: 'networkidle0' } );
     sizes[name].imageBuffer = await page.screenshot( {
       fullPage: true,
-      type: 'png',
+      type: 'webp',
+      quality: 100,
       encoding: 'binary'
     } );
   }
   return sizes;
 };
 
-const buildFileName = ( domain, size ) => `${domain}-${size.width}x${size.height}.png`;
+const buildFileName = ( domain, size ) => `${domain}-${size.width}x${size.height}.webp`;
 
 const saveMaster = ( domain, size ) => {
   const filename = buildFileName( domain, size );
-  console.log( `Saving ${filename} ...`, size );
+  console.log( `Saving ${filename} ...` );
   fs.writeFileSync( filename, size.imageBuffer );
 };
 
@@ -60,9 +61,11 @@ async function visitPages ( action ) {
   const page = await browser.newPage();
   await page.setCacheEnabled( false );
 
-  action( page );
+  const arbitraryReturnValue = await action( page );
 
   browser.close();
+
+  return arbitraryReturnValue;
 }
 
 
@@ -78,30 +81,14 @@ async function createMasterReferences ( page, domain, devices ) {
 
 }
 
-async function createVerificationReferences () {
+async function createVerificationReferences ( page, domain, devices ) {
   const data = await capture(
     page,
     domain,
     devices
   );
 
-  const pairedData = [
-    Object.entries( firstData ),
-    Object.entries( data )
-  ];
-
-
-  let diffs = [];
-  const safeLength = Math.min( pairedData[0], pairedData[1] );
-  for ( let i = 0; i < safeLength; ++i ) {
-    diffs[i] = areBuffersEqual(
-      pairedData[0][i].imageBuffer,
-      pairedData[1][i].imageBuffer
-    );
-  }
-
-  return [pairedData, diffs];
-
+  return data;
 }
 
 const onReadError = ( err, data ) => {
@@ -135,13 +122,67 @@ async function run () {
 
   const domain = 'marketmentors.com';
 
-  visitPages( ( page ) => { createMasterReferences( page, domain, devices ); } );
+  await visitPages( async ( page ) => { await createMasterReferences( page, domain, devices ); } );
 
-  /* cron.schedule( '* * * * *', async function doScheduledTask() {
-      // console.log( 'running a task every minute' );
-  
-  
-  
+  const masters = Object.entries( devices ).reduce( ( accum, [key, device] ) => {
+    accum[key] = {
+      ...device,
+      imageBuffer: loadMaster( domain, device )
+    };
+    return accum;
+  }, {} );
+
+  const samples = await visitPages( async ( page ) => {
+    return await createVerificationReferences(
+      page,
+      domain,
+      devices
+    );
+  } );
+
+
+  let diff = [];
+  const a = Object.values( masters );
+  const b = Object.values( samples );
+  for ( let i = 0; i < Object.values( devices ).length; ++i ) {
+    diff[i] = areBuffersEqual(
+      a[i].imageBuffer,
+      b[i].imageBuffer
+    );
+    console.log( `master ${a[i].width}x${a[i].height} <> sample ${b[i].width}x${b[i].height}`, diff[i] );
+  }
+
+
+  /* cron.schedule( '*\/5 * * * *', async function doScheduledTask () {
+    // console.log( 'running a task every 5 minutes' );
+
+    const masters = devices.map( ( device ) => loadMaster( domain, device ) );
+
+    const references = await visitPages( async ( page ) => {
+      return await createVerificationReferences(
+        page,
+        domain,
+        devices
+      );
+    } );
+
+    console.log(
+      masters,
+      references
+    );
+
+
+    let diffs = [];
+    const safeLength = Math.min( pairedData[0], pairedData[1] );
+    for ( let i = 0; i < safeLength; ++i ) {
+      diffs[i] = areBuffersEqual(
+        pairedData[0][i].imageBuffer,
+        pairedData[1][i].imageBuffer
+      );
+    }
+
+
+
   } ); */
 
 }
